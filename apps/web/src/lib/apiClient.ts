@@ -2,6 +2,7 @@ export type AssetSymbol = 'BTC' | 'ETH' | 'XRP';
 export type Timeframe = '1D' | '1W' | '1M' | '3M' | '1Y';
 
 type BinanceSymbol = 'BTCUSDT' | 'ETHUSDT' | 'XRPUSDT';
+type CoinGeckoAssetId = 'bitcoin' | 'ethereum' | 'ripple';
 
 export interface MarketSnapshot {
   symbol: AssetSymbol;
@@ -36,6 +37,7 @@ const ASSET_CONFIG: Record<AssetSymbol, { ticker: BinanceSymbol; name: string }>
 };
 
 const BINANCE_BASE_URL = 'https://api.binance.com/api/v3';
+const COINGECKO_BASE_URL = 'https://api.coingecko.com/api/v3';
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, '') ?? 'http://localhost:3000/api';
 
 function requestError(response: Response, body: string) {
@@ -67,6 +69,18 @@ interface BinanceTicker24h {
   quoteVolume: string;
 }
 
+interface CoinGeckoMarket {
+  id: CoinGeckoAssetId;
+  current_price: number;
+  price_change_percentage_24h_in_currency: number | null;
+  total_volume: number;
+  market_cap: number;
+}
+
+interface CoinGeckoMarketChart {
+  prices: [number, number][];
+}
+
 type BinanceKline = [
   number,
   string,
@@ -93,6 +107,28 @@ function toAssetSymbol(ticker: BinanceSymbol): AssetSymbol {
   }
 }
 
+function toCoinGeckoAssetId(symbol: AssetSymbol): CoinGeckoAssetId {
+  switch (symbol) {
+    case 'BTC':
+      return 'bitcoin';
+    case 'ETH':
+      return 'ethereum';
+    case 'XRP':
+      return 'ripple';
+  }
+}
+
+function fromCoinGeckoAssetId(assetId: CoinGeckoAssetId): AssetSymbol {
+  switch (assetId) {
+    case 'bitcoin':
+      return 'BTC';
+    case 'ethereum':
+      return 'ETH';
+    case 'ripple':
+      return 'XRP';
+  }
+}
+
 function toBinanceTimeframe(timeframe: Timeframe): { interval: string; limit: number } {
   switch (timeframe) {
     case '1D':
@@ -107,6 +143,23 @@ function toBinanceTimeframe(timeframe: Timeframe): { interval: string; limit: nu
       return { interval: '1d', limit: 365 };
     default:
       return { interval: '4h', limit: 180 };
+  }
+}
+
+function toCoinGeckoDays(timeframe: Timeframe): string {
+  switch (timeframe) {
+    case '1D':
+      return '1';
+    case '1W':
+      return '7';
+    case '1M':
+      return '30';
+    case '3M':
+      return '90';
+    case '1Y':
+      return '365';
+    default:
+      return '30';
   }
 }
 
@@ -144,26 +197,93 @@ async function getPredictionFromApi(symbol: AssetSymbol, timeframe: Timeframe): 
   return request<PredictionResponse>(`${API_BASE_URL}/prediction?${params.toString()}`);
 }
 
+async function getMarketSnapshotsFromBinance(symbols: AssetSymbol[]): Promise<MarketSnapshot[]> {
+  const tickers = symbols.map((symbol) => ASSET_CONFIG[symbol].ticker);
+  const query = encodeURIComponent(JSON.stringify(tickers));
+  const marketData = await request<BinanceTicker24h[]>(`${BINANCE_BASE_URL}/ticker/24hr?symbols=${query}`);
+
+  return marketData.map((item) => {
+    const symbol = toAssetSymbol(item.symbol);
+    return {
+      symbol,
+      name: ASSET_CONFIG[symbol].name,
+      priceUsd: Number(item.lastPrice),
+      change24hPct: Number(item.priceChangePercent),
+      volume24hUsd: Number(item.quoteVolume),
+      marketCapUsd: 0
+    };
+  });
+}
+
+async function getMarketSnapshotsFromCoinGecko(symbols: AssetSymbol[]): Promise<MarketSnapshot[]> {
+  const ids = symbols.map(toCoinGeckoAssetId).join(',');
+  const params = new URLSearchParams({
+    vs_currency: 'usd',
+    ids,
+    price_change_percentage: '24h'
+  });
+
+  const marketData = await request<CoinGeckoMarket[]>(`${COINGECKO_BASE_URL}/coins/markets?${params.toString()}`);
+
+  return marketData.map((item) => {
+    const symbol = fromCoinGeckoAssetId(item.id);
+    return {
+      symbol,
+      name: ASSET_CONFIG[symbol].name,
+      priceUsd: item.current_price,
+      change24hPct: item.price_change_percentage_24h_in_currency ?? 0,
+      volume24hUsd: item.total_volume,
+      marketCapUsd: item.market_cap
+    };
+  });
+}
+
+async function getHistoricalDataFromBinance(symbol: AssetSymbol, timeframe: Timeframe): Promise<HistoricalCandle[]> {
+  const coinTicker = ASSET_CONFIG[symbol].ticker;
+  const { interval, limit } = toBinanceTimeframe(timeframe);
+  const history = await request<BinanceKline[]>(
+    `${BINANCE_BASE_URL}/klines?symbol=${coinTicker}&interval=${interval}&limit=${limit}`
+  );
+
+  return history.map((candle) => ({
+    timestamp: new Date(candle[0]).toISOString(),
+    open: Number(candle[1]),
+    high: Number(candle[2]),
+    low: Number(candle[3]),
+    close: Number(candle[4])
+  }));
+}
+
+async function getHistoricalDataFromCoinGecko(symbol: AssetSymbol, timeframe: Timeframe): Promise<HistoricalCandle[]> {
+  const assetId = toCoinGeckoAssetId(symbol);
+  const params = new URLSearchParams({
+    vs_currency: 'usd',
+    days: toCoinGeckoDays(timeframe)
+  });
+
+  const history = await request<CoinGeckoMarketChart>(
+    `${COINGECKO_BASE_URL}/coins/${assetId}/market_chart?${params.toString()}`
+  );
+
+  return history.prices.map(([timestamp, price]) => ({
+    timestamp: new Date(timestamp).toISOString(),
+    open: price,
+    high: price,
+    low: price,
+    close: price
+  }));
+}
+
 export const apiClient = {
   async getMarketSnapshots(symbols: AssetSymbol[]) {
     try {
       return await getMarketSnapshotsFromApi(symbols);
     } catch {
-      const tickers = symbols.map((symbol) => ASSET_CONFIG[symbol].ticker);
-      const query = encodeURIComponent(JSON.stringify(tickers));
-      const marketData = await request<BinanceTicker24h[]>(`${BINANCE_BASE_URL}/ticker/24hr?symbols=${query}`);
-
-      return marketData.map((item) => {
-        const symbol = toAssetSymbol(item.symbol);
-        return {
-          symbol,
-          name: ASSET_CONFIG[symbol].name,
-          priceUsd: Number(item.lastPrice),
-          change24hPct: Number(item.priceChangePercent),
-          volume24hUsd: Number(item.quoteVolume),
-          marketCapUsd: 0
-        };
-      });
+      try {
+        return await getMarketSnapshotsFromBinance(symbols);
+      } catch {
+        return getMarketSnapshotsFromCoinGecko(symbols);
+      }
     }
   },
 
@@ -171,19 +291,11 @@ export const apiClient = {
     try {
       return await getHistoricalDataFromApi(symbol, timeframe);
     } catch {
-      const coinTicker = ASSET_CONFIG[symbol].ticker;
-      const { interval, limit } = toBinanceTimeframe(timeframe);
-      const history = await request<BinanceKline[]>(
-        `${BINANCE_BASE_URL}/klines?symbol=${coinTicker}&interval=${interval}&limit=${limit}`
-      );
-
-      return history.map((candle) => ({
-        timestamp: new Date(candle[0]).toISOString(),
-        open: Number(candle[1]),
-        high: Number(candle[2]),
-        low: Number(candle[3]),
-        close: Number(candle[4])
-      }));
+      try {
+        return await getHistoricalDataFromBinance(symbol, timeframe);
+      } catch {
+        return getHistoricalDataFromCoinGecko(symbol, timeframe);
+      }
     }
   },
 
