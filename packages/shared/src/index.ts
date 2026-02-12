@@ -1,4 +1,5 @@
-export * from './dto';
+export * from './dto/index.js';
+
 export interface MarketDataPoint {
   symbol: string;
   timestamp: string;
