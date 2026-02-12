@@ -35,6 +35,19 @@ npm run dev:web
 
 - Web default: `http://localhost:5173`
 
+
+### Troubleshooting restricted environments
+
+If `npm install` cannot access the npm registry in your environment, you can still run a lightweight dashboard that requires **no external dependencies**:
+
+```bash
+npm run dev:web:lite
+```
+
+- Runs at `http://localhost:5173`
+- Uses CoinGecko public API directly
+- Intended as a fallback when workspace dependencies cannot be installed
+
 ### 3) Run checks
 
 ```bash
