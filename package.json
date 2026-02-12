@@ -3,18 +3,6 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "scripts": {
-    "lint": "eslint eslint.config.js",
-    "lint:fix": "eslint . --fix",
-    "format": "prettier --check .",
-    "format:write": "prettier --write .",
-    "typecheck": "tsc --noEmit",
-    "test": "node --test --experimental-strip-types tests/**/*.test.ts"
-  },
-  "devDependencies": {
-    "eslint": "^9.23.0",
-    "prettier": "^3.5.3",
-    "typescript": "^5.8.2"
   "workspaces": [
     "apps/*",
     "packages/*"
@@ -24,6 +12,12 @@
     "dev:api": "npm run dev -w @crypto/api",
     "build": "npm run build --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
-    "typecheck": "npm run typecheck --workspaces --if-present"
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "node --test --experimental-strip-types tests/**/*.test.ts"
+  },
+  "devDependencies": {
+    "eslint": "^9.23.0",
+    "prettier": "^3.5.3",
+    "typescript": "^5.8.2"
   }
 }
