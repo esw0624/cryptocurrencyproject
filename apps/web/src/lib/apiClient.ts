@@ -36,6 +36,7 @@ const ASSET_CONFIG: Record<AssetSymbol, { id: CoinGeckoId; name: string }> = {
 };
 
 const COINGECKO_BASE_URL = 'https://api.coingecko.com/api/v3';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, '') ?? 'http://localhost:3000/api';
 
 function timeframeToDays(timeframe: Timeframe): number {
   switch (timeframe) {
@@ -54,8 +55,8 @@ function timeframeToDays(timeframe: Timeframe): number {
   }
 }
 
-async function request<T>(path: string): Promise<T> {
-  const response = await fetch(`${COINGECKO_BASE_URL}${path}`);
+async function request<T>(url: string): Promise<T> {
+  const response = await fetch(url);
   if (!response.ok) {
     const message = await response.text();
     throw new Error(message || `Request failed with ${response.status}`);
@@ -107,43 +108,68 @@ function buildPrediction(symbol: AssetSymbol, timeframe: Timeframe, history: His
   };
 }
 
+async function getMarketSnapshotsFromApi(symbols: AssetSymbol[]): Promise<MarketSnapshot[]> {
+  const params = new URLSearchParams({ symbols: symbols.join(',') });
+  return request<MarketSnapshot[]>(`${API_BASE_URL}/markets?${params.toString()}`);
+}
+
+async function getHistoricalDataFromApi(symbol: AssetSymbol, timeframe: Timeframe): Promise<HistoricalCandle[]> {
+  const params = new URLSearchParams({ symbol, timeframe });
+  return request<HistoricalCandle[]>(`${API_BASE_URL}/history?${params.toString()}`);
+}
+
+async function getPredictionFromApi(symbol: AssetSymbol, timeframe: Timeframe): Promise<PredictionResponse> {
+  const params = new URLSearchParams({ symbol, timeframe });
+  return request<PredictionResponse>(`${API_BASE_URL}/prediction?${params.toString()}`);
+}
+
 export const apiClient = {
   async getMarketSnapshots(symbols: AssetSymbol[]) {
-    const ids = symbols.map((symbol) => ASSET_CONFIG[symbol].id).join(',');
+    try {
+      return await getMarketSnapshotsFromApi(symbols);
+    } catch {
+      const ids = symbols.map((symbol) => ASSET_CONFIG[symbol].id).join(',');
+      const marketData = await request<CoinMarketItem[]>(
+        `${COINGECKO_BASE_URL}/coins/markets?vs_currency=usd&ids=${ids}&order=market_cap_desc&sparkline=false&price_change_percentage=24h`
+      );
 
-    const marketData = await request<CoinMarketItem[]>(
-      `/coins/markets?vs_currency=usd&ids=${ids}&order=market_cap_desc&sparkline=false&price_change_percentage=24h`
-    );
-
-    return marketData.map((item) => ({
-      symbol: toSymbol(item.id),
-      name: item.name,
-      priceUsd: item.current_price,
-      change24hPct: item.price_change_percentage_24h ?? 0,
-      volume24hUsd: item.total_volume,
-      marketCapUsd: item.market_cap
-    }));
+      return marketData.map((item) => ({
+        symbol: toSymbol(item.id),
+        name: item.name,
+        priceUsd: item.current_price,
+        change24hPct: item.price_change_percentage_24h ?? 0,
+        volume24hUsd: item.total_volume,
+        marketCapUsd: item.market_cap
+      }));
+    }
   },
 
   async getHistoricalData(symbol: AssetSymbol, timeframe: Timeframe) {
-    const days = timeframeToDays(timeframe);
-    const coinId = ASSET_CONFIG[symbol].id;
+    try {
+      return await getHistoricalDataFromApi(symbol, timeframe);
+    } catch {
+      const days = timeframeToDays(timeframe);
+      const coinId = ASSET_CONFIG[symbol].id;
+      const history = await request<CoinHistoryResponse>(
+        `${COINGECKO_BASE_URL}/coins/${coinId}/market_chart?vs_currency=usd&days=${days}&interval=${days <= 30 ? 'hourly' : 'daily'}`
+      );
 
-    const history = await request<CoinHistoryResponse>(
-      `/coins/${coinId}/market_chart?vs_currency=usd&days=${days}&interval=${days <= 30 ? 'hourly' : 'daily'}`
-    );
-
-    return history.prices.map(([timestamp, price]) => ({
-      timestamp: new Date(timestamp).toISOString(),
-      open: price,
-      high: price,
-      low: price,
-      close: price
-    }));
+      return history.prices.map(([timestamp, price]) => ({
+        timestamp: new Date(timestamp).toISOString(),
+        open: price,
+        high: price,
+        low: price,
+        close: price
+      }));
+    }
   },
 
-  async getPrediction(symbol: AssetSymbol, timeframe: Timeframe) {
-    const history = await this.getHistoricalData(symbol, timeframe);
-    return buildPrediction(symbol, timeframe, history);
+  async getPrediction(symbol: AssetSymbol, timeframe: Timeframe, history?: HistoricalCandle[]) {
+    try {
+      return await getPredictionFromApi(symbol, timeframe);
+    } catch {
+      const sourceHistory = history ?? (await this.getHistoricalData(symbol, timeframe));
+      return buildPrediction(symbol, timeframe, sourceHistory);
+    }
   }
 };

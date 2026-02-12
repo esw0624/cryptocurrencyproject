@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Area, AreaChart, ResponsiveContainer, Tooltip } from 'recharts';
 import { AssetSelector } from '../components/AssetSelector';
 import { MarketCard } from '../components/MarketCard';
 import { PredictionPanel } from '../components/PredictionPanel';
@@ -7,6 +8,16 @@ import { TimeframeControls } from '../components/TimeframeControls';
 import { apiClient, type AssetSymbol, type HistoricalCandle, type MarketSnapshot, type PredictionResponse, type Timeframe } from '../lib/apiClient';
 
 const TRACKED_ASSETS: AssetSymbol[] = ['BTC', 'ETH', 'XRP'];
+
+const currencyFormatter = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 });
+
+function performanceLabel(percent: number) {
+  if (percent > 4) return 'on fire';
+  if (percent > 0.5) return 'trending up';
+  if (percent < -4) return 'rough session';
+  if (percent < -0.5) return 'pullback mode';
+  return 'sideways vibe';
+}
 
 export function Dashboard() {
   const [markets, setMarkets] = useState<MarketSnapshot[]>([]);
@@ -24,11 +35,12 @@ export function Dashboard() {
       setError(null);
 
       try {
-        const [marketData, historicalData, predictionData] = await Promise.all([
+        const [marketData, historicalData] = await Promise.all([
           apiClient.getMarketSnapshots(TRACKED_ASSETS),
-          apiClient.getHistoricalData(selectedAsset, timeframe),
-          apiClient.getPrediction(selectedAsset, timeframe)
+          apiClient.getHistoricalData(selectedAsset, timeframe)
         ]);
+
+        const predictionData = await apiClient.getPrediction(selectedAsset, timeframe, historicalData);
 
         setMarkets(marketData);
         setHistory(historicalData);
@@ -43,15 +55,26 @@ export function Dashboard() {
     void loadData();
   }, [selectedAsset, timeframe]);
 
-  const selectedMarket = useMemo(
-    () => markets.find((market) => market.symbol === selectedAsset),
-    [markets, selectedAsset]
+  const selectedMarket = useMemo(() => markets.find((market) => market.symbol === selectedAsset), [markets, selectedAsset]);
+
+  const sparklineData = useMemo(
+    () => history.map((item) => ({ v: item.close })),
+    [history]
   );
+
+  const latestPrice = history.at(-1)?.close ?? selectedMarket?.priceUsd ?? 0;
+  const firstPrice = history[0]?.close ?? latestPrice;
+  const timeframeDeltaPct = firstPrice === 0 ? 0 : ((latestPrice - firstPrice) / firstPrice) * 100;
+  const highValue = history.reduce((max, item) => Math.max(max, item.high), 0);
+  const lowValue = history.reduce((min, item) => Math.min(min, item.low), Number.POSITIVE_INFINITY);
 
   return (
     <main className="dashboard">
       <nav className="top-nav">
-        <div className="brand">Cipher Markets</div>
+        <div>
+          <div className="brand">NeonNest Markets</div>
+          <p className="brand-subtitle">Trade signals, market pulse, and data-driven crypto confidence.</p>
+        </div>
         <div className="top-nav__controls">
           <AssetSelector assets={TRACKED_ASSETS} selectedAsset={selectedAsset} onSelect={setSelectedAsset} />
           <TimeframeControls timeframe={timeframe} onChange={setTimeframe} />
@@ -59,10 +82,50 @@ export function Dashboard() {
       </nav>
 
       {error && <div className="status status--error">{error}</div>}
-      {loading && <div className="status">Loading live market data…</div>}
+      {loading && <div className="status">Syncing live market feeds…</div>}
 
       {!loading && !error && (
         <>
+          <section className="hero-panel panel">
+            <div>
+              <p className="label">Now Tracking</p>
+              <h1>{selectedMarket?.name ?? selectedAsset}</h1>
+              <p className="hero-price">{currencyFormatter.format(latestPrice)}</p>
+              <p className={`hero-delta ${timeframeDeltaPct >= 0 ? 'up' : 'down'}`}>
+                {timeframeDeltaPct >= 0 ? '+' : ''}
+                {timeframeDeltaPct.toFixed(2)}% • {performanceLabel(timeframeDeltaPct)}
+              </p>
+            </div>
+            <div className="hero-metrics">
+              <div>
+                <p className="label">Timeframe High</p>
+                <p className="value">{currencyFormatter.format(highValue)}</p>
+              </div>
+              <div>
+                <p className="label">Timeframe Low</p>
+                <p className="value">{currencyFormatter.format(Number.isFinite(lowValue) ? lowValue : 0)}</p>
+              </div>
+              <div>
+                <p className="label">24h Volume</p>
+                <p className="value">{currencyFormatter.format(selectedMarket?.volume24hUsd ?? 0)}</p>
+              </div>
+              <div className="sparkline-wrap">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={sparklineData}>
+                    <Tooltip formatter={(value) => currencyFormatter.format(Number(value))} />
+                    <Area type="monotone" dataKey="v" stroke="#7f8bff" fill="url(#sparkGradient)" strokeWidth={2} />
+                    <defs>
+                      <linearGradient id="sparkGradient" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#7f8bff" stopOpacity={0.45} />
+                        <stop offset="95%" stopColor="#7f8bff" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          </section>
+
           <section className="market-grid">
             {markets.map((market) => (
               <MarketCard key={market.symbol} market={market} />
@@ -72,19 +135,13 @@ export function Dashboard() {
           <section className="content-grid">
             <div>
               <div className="panel__header panel__header--inline">
-                <h2>{selectedMarket?.name ?? selectedAsset} overview</h2>
+                <h2>{selectedMarket?.name ?? selectedAsset} chartroom</h2>
                 <div className="mode-toggle">
-                  <button
-                    className={`chip chip--small ${chartMode === 'line' ? 'chip--active' : ''}`}
-                    onClick={() => setChartMode('line')}
-                  >
+                  <button className={`chip chip--small ${chartMode === 'line' ? 'chip--active' : ''}`} onClick={() => setChartMode('line')}>
                     Line
                   </button>
-                  <button
-                    className={`chip chip--small ${chartMode === 'candlestick' ? 'chip--active' : ''}`}
-                    onClick={() => setChartMode('candlestick')}
-                  >
-                    Candlestick
+                  <button className={`chip chip--small ${chartMode === 'candlestick' ? 'chip--active' : ''}`} onClick={() => setChartMode('candlestick')}>
+                    Range
                   </button>
                 </div>
               </div>
