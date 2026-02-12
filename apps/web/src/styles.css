@@ -1,49 +1,56 @@
 :root {
   color-scheme: dark;
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-  background: #0a0f1c;
+  background: #070b16;
   color: #dbe4f0;
 }
 
 * {
   box-sizing: border-box;
-  font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  color: #f5f5f5;
-  background: #101826;
 }
 
 body {
   margin: 0;
-  background: radial-gradient(circle at top right, #18243f 0%, #0a0f1c 40%);
+  color: #dbe4f0;
+  background:
+    radial-gradient(circle at 15% 10%, rgba(69, 83, 255, 0.35), transparent 35%),
+    radial-gradient(circle at 85% 5%, rgba(15, 194, 174, 0.25), transparent 35%),
+    linear-gradient(180deg, #05070f 0%, #0a1222 100%);
 }
 
 .dashboard {
-  max-width: 1200px;
+  max-width: 1240px;
   margin: 0 auto;
   min-height: 100vh;
-  padding: 1rem;
+  padding: 1.1rem;
 }
 
 .top-nav {
   position: sticky;
-  top: 0;
-  z-index: 10;
+  top: 0.75rem;
+  z-index: 20;
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 1rem;
   margin-bottom: 1rem;
-  border: 1px solid #25314d;
-  border-radius: 14px;
-  background: #111827dd;
-  backdrop-filter: blur(8px);
+  border: 1px solid rgba(93, 114, 169, 0.45);
+  border-radius: 16px;
+  background: rgba(11, 20, 37, 0.82);
+  backdrop-filter: blur(12px);
   padding: 0.9rem 1rem;
 }
 
 .brand {
-  font-size: 1rem;
-  font-weight: 700;
+  font-size: 1.1rem;
+  font-weight: 800;
   letter-spacing: 0.03em;
+}
+
+.brand-subtitle {
+  margin: 0.2rem 0 0;
+  color: #8ea2c8;
+  font-size: 0.85rem;
 }
 
 .top-nav__controls {
@@ -61,13 +68,19 @@ body {
 }
 
 .chip {
-  border: 1px solid #314164;
+  border: 1px solid #33466f;
   border-radius: 999px;
-  background: #151f33;
-  color: #aab7cc;
+  background: #111c30;
+  color: #b8c6df;
   padding: 0.55rem 0.95rem;
-  font-size: 0.85rem;
+  font-size: 0.82rem;
   cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.chip:hover {
+  border-color: #6f8eff;
+  transform: translateY(-1px);
 }
 
 .chip--small {
@@ -75,9 +88,57 @@ body {
 }
 
 .chip--active {
-  border-color: #4f8cff;
-  background: #23345e;
-  color: #eff5ff;
+  border-color: #7c97ff;
+  background: linear-gradient(180deg, #344f9c, #253e7e);
+  color: #f6f9ff;
+}
+
+.panel,
+.market-card {
+  border-radius: 16px;
+  border: 1px solid rgba(69, 89, 133, 0.55);
+  background: linear-gradient(180deg, rgba(14, 23, 41, 0.92), rgba(9, 17, 31, 0.94));
+  padding: 1rem;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.18);
+}
+
+.hero-panel {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.hero-panel h1 {
+  margin: 0.3rem 0;
+  font-size: 1.6rem;
+}
+
+.hero-price {
+  margin: 0;
+  font-size: 2rem;
+  font-weight: 800;
+}
+
+.hero-delta {
+  margin-top: 0.35rem;
+  font-weight: 600;
+}
+
+.hero-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.8rem;
+  align-items: stretch;
+}
+
+.sparkline-wrap {
+  grid-column: span 2;
+  min-height: 100px;
+  border: 1px solid rgba(104, 126, 178, 0.4);
+  border-radius: 12px;
+  padding: 0.3rem;
+  background: rgba(12, 21, 39, 0.75);
 }
 
 .market-grid {
@@ -85,14 +146,6 @@ body {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.8rem;
   margin-bottom: 1rem;
-}
-
-.market-card,
-.panel {
-  border-radius: 14px;
-  border: 1px solid #28334d;
-  background: linear-gradient(180deg, #131b2d 0%, #0f1627 100%);
-  padding: 1rem;
 }
 
 .market-card header {
@@ -118,8 +171,13 @@ body {
   font-weight: 700;
 }
 
-.up { color: #1bc5a3; }
-.down { color: #ea5252; }
+.up {
+  color: #39d9b4;
+}
+
+.down {
+  color: #ff6983;
+}
 
 .market-card__meta {
   display: grid;
@@ -150,7 +208,7 @@ body {
 }
 
 .chart-wrap {
-  height: 360px;
+  height: 380px;
 }
 
 .prediction-grid {
@@ -161,7 +219,9 @@ body {
 .label {
   margin: 0;
   color: #8fa2bf;
-  font-size: 0.8rem;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
 }
 
 .value {
@@ -177,9 +237,20 @@ body {
   font-size: 0.75rem;
 }
 
-.pill--up { border-color: #1bc5a3; color: #1bc5a3; }
-.pill--down { border-color: #ea5252; color: #ea5252; }
-.pill--flat { border-color: #f4c95e; color: #f4c95e; }
+.pill--up {
+  border-color: #1bc5a3;
+  color: #1bc5a3;
+}
+
+.pill--down {
+  border-color: #ea5252;
+  color: #ea5252;
+}
+
+.pill--flat {
+  border-color: #f4c95e;
+  color: #f4c95e;
+}
 
 .muted,
 .status {
@@ -201,11 +272,9 @@ body {
 }
 
 @media (max-width: 900px) {
+  .hero-panel,
+  .content-grid,
   .market-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .content-grid {
     grid-template-columns: 1fr;
   }
 
@@ -218,20 +287,4 @@ body {
     width: 100%;
     justify-content: space-between;
   }
-}
-
-.container {
-  margin: 0 auto;
-  max-width: 720px;
-  padding: 4rem 1.5rem;
-}
-
-h1 {
-  margin-top: 0;
-}
-
-code {
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 4px;
-  padding: 0.1rem 0.35rem;
 }

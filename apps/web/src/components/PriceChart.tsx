@@ -1,4 +1,4 @@
-import { Area, AreaChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { Area, AreaChart, CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import type { HistoricalCandle } from '../lib/apiClient';
 
 interface PriceChartProps {
@@ -20,30 +20,33 @@ export function PriceChart({ data, mode }: PriceChartProps) {
     low: item.low
   }));
 
+  const latest = points.at(-1)?.close ?? 0;
+
   return (
     <section className="panel">
       <div className="panel__header">
         <h3>Price Chart</h3>
-        <span className="muted">{mode === 'line' ? 'Line' : 'Candlestick-like range'}</span>
+        <span className="muted">{mode === 'line' ? 'Momentum view' : 'Volatility range view'}</span>
       </div>
       <div className="chart-wrap">
         <ResponsiveContainer width="100%" height="100%">
           {mode === 'line' ? (
             <LineChart data={points}>
               <CartesianGrid strokeDasharray="3 3" stroke="#2c3344" />
-              <XAxis dataKey="time" tick={{ fill: '#97a3b8' }} />
-              <YAxis tick={{ fill: '#97a3b8' }} tickFormatter={(value) => `$${value}`} />
+              <XAxis dataKey="time" tick={{ fill: '#97a3b8', fontSize: 12 }} />
+              <YAxis tick={{ fill: '#97a3b8', fontSize: 12 }} tickFormatter={(value) => `$${Number(value).toLocaleString()}`} />
               <Tooltip formatter={(value) => formatter.format(Number(value))} />
-              <Line type="monotone" dataKey="close" stroke="#4f8cff" strokeWidth={2} dot={false} />
+              <ReferenceLine y={latest} stroke="#5a6d94" strokeDasharray="4 4" />
+              <Line type="monotone" dataKey="close" stroke="#7f8bff" strokeWidth={2.3} dot={false} />
             </LineChart>
           ) : (
             <AreaChart data={points}>
               <CartesianGrid strokeDasharray="3 3" stroke="#2c3344" />
-              <XAxis dataKey="time" tick={{ fill: '#97a3b8' }} />
-              <YAxis tick={{ fill: '#97a3b8' }} tickFormatter={(value) => `$${value}`} />
+              <XAxis dataKey="time" tick={{ fill: '#97a3b8', fontSize: 12 }} />
+              <YAxis tick={{ fill: '#97a3b8', fontSize: 12 }} tickFormatter={(value) => `$${Number(value).toLocaleString()}`} />
               <Tooltip formatter={(value) => formatter.format(Number(value))} />
-              <Area type="monotone" dataKey="high" stroke="#1bc5a3" fill="#1bc5a322" />
-              <Area type="monotone" dataKey="low" stroke="#ea5252" fill="#ea525222" />
+              <Area type="monotone" dataKey="high" stroke="#14d8b3" fill="#14d8b326" strokeWidth={2} />
+              <Area type="monotone" dataKey="low" stroke="#ff6d8a" fill="#ff6d8a24" strokeWidth={2} />
             </AreaChart>
           )}
         </ResponsiveContainer>
