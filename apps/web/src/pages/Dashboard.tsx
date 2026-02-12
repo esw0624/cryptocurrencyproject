@@ -53,6 +53,12 @@ export function Dashboard() {
     }
 
     void loadData();
+
+    const refreshTimer = window.setInterval(() => {
+      void loadData();
+    }, 15_000);
+
+    return () => window.clearInterval(refreshTimer);
   }, [selectedAsset, timeframe]);
 
   const selectedMarket = useMemo(() => markets.find((market) => market.symbol === selectedAsset), [markets, selectedAsset]);
@@ -72,8 +78,8 @@ export function Dashboard() {
     <main className="dashboard">
       <nav className="top-nav">
         <div>
-          <div className="brand">NeonNest Markets</div>
-          <p className="brand-subtitle">Trade signals, market pulse, and data-driven crypto confidence.</p>
+          <div className="brand">Predictify</div>
+          <p className="brand-subtitle">Live trade signals and market pulse with automatic 15s refresh.</p>
         </div>
         <div className="top-nav__controls">
           <AssetSelector assets={TRACKED_ASSETS} selectedAsset={selectedAsset} onSelect={setSelectedAsset} />
