@@ -1,3 +1,8 @@
+import { Dashboard } from './pages/Dashboard';
+
+export function App() {
+  return <Dashboard />;
+}
 const App = () => {
   return (
     <main className="container">
