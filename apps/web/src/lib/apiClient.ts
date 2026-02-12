@@ -1,6 +1,8 @@
 export type AssetSymbol = 'BTC' | 'ETH' | 'XRP';
 export type Timeframe = '1D' | '1W' | '1M' | '3M' | '1Y';
 
+type CoinGeckoId = 'bitcoin' | 'ethereum' | 'ripple';
+
 export interface MarketSnapshot {
   symbol: AssetSymbol;
   name: string;
@@ -27,10 +29,33 @@ export interface PredictionResponse {
   lastModelRun: string;
 }
 
-const API_BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3000';
+const ASSET_CONFIG: Record<AssetSymbol, { id: CoinGeckoId; name: string }> = {
+  BTC: { id: 'bitcoin', name: 'Bitcoin' },
+  ETH: { id: 'ethereum', name: 'Ethereum' },
+  XRP: { id: 'ripple', name: 'XRP' }
+};
+
+const COINGECKO_BASE_URL = 'https://api.coingecko.com/api/v3';
+
+function timeframeToDays(timeframe: Timeframe): number {
+  switch (timeframe) {
+    case '1D':
+      return 1;
+    case '1W':
+      return 7;
+    case '1M':
+      return 30;
+    case '3M':
+      return 90;
+    case '1Y':
+      return 365;
+    default:
+      return 30;
+  }
+}
 
 async function request<T>(path: string): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${path}`);
+  const response = await fetch(`${COINGECKO_BASE_URL}${path}`);
   if (!response.ok) {
     const message = await response.text();
     throw new Error(message || `Request failed with ${response.status}`);
@@ -38,13 +63,87 @@ async function request<T>(path: string): Promise<T> {
   return response.json() as Promise<T>;
 }
 
+interface CoinMarketItem {
+  id: CoinGeckoId;
+  symbol: string;
+  name: string;
+  current_price: number;
+  price_change_percentage_24h: number;
+  total_volume: number;
+  market_cap: number;
+}
+
+interface CoinHistoryResponse {
+  prices: [number, number][];
+}
+
+function toSymbol(id: CoinGeckoId): AssetSymbol {
+  switch (id) {
+    case 'bitcoin':
+      return 'BTC';
+    case 'ethereum':
+      return 'ETH';
+    case 'ripple':
+      return 'XRP';
+  }
+}
+
+function buildPrediction(symbol: AssetSymbol, timeframe: Timeframe, history: HistoricalCandle[]): PredictionResponse {
+  const first = history[0]?.close ?? 0;
+  const last = history.at(-1)?.close ?? 0;
+  const momentum = first === 0 ? 0 : (last - first) / first;
+  const projectedMove = momentum * 0.25;
+  const predictedPriceUsd = Math.max(last * (1 + projectedMove), 0);
+  const direction: PredictionResponse['direction'] =
+    projectedMove > 0.005 ? 'up' : projectedMove < -0.005 ? 'down' : 'flat';
+
+  return {
+    symbol,
+    horizon: timeframe,
+    predictedPriceUsd,
+    confidencePct: Math.min(Math.abs(momentum) * 100 + 55, 92),
+    direction,
+    lastModelRun: new Date().toISOString()
+  };
+}
+
 export const apiClient = {
-  getMarketSnapshots: (symbols: AssetSymbol[]) =>
-    request<MarketSnapshot[]>(`/api/markets?symbols=${symbols.join(',')}`),
+  async getMarketSnapshots(symbols: AssetSymbol[]) {
+    const ids = symbols.map((symbol) => ASSET_CONFIG[symbol].id).join(',');
 
-  getHistoricalData: (symbol: AssetSymbol, timeframe: Timeframe) =>
-    request<HistoricalCandle[]>(`/api/history?symbol=${symbol}&timeframe=${timeframe}`),
+    const marketData = await request<CoinMarketItem[]>(
+      `/coins/markets?vs_currency=usd&ids=${ids}&order=market_cap_desc&sparkline=false&price_change_percentage=24h`
+    );
 
-  getPrediction: (symbol: AssetSymbol, timeframe: Timeframe) =>
-    request<PredictionResponse>(`/api/prediction?symbol=${symbol}&timeframe=${timeframe}`)
+    return marketData.map((item) => ({
+      symbol: toSymbol(item.id),
+      name: item.name,
+      priceUsd: item.current_price,
+      change24hPct: item.price_change_percentage_24h ?? 0,
+      volume24hUsd: item.total_volume,
+      marketCapUsd: item.market_cap
+    }));
+  },
+
+  async getHistoricalData(symbol: AssetSymbol, timeframe: Timeframe) {
+    const days = timeframeToDays(timeframe);
+    const coinId = ASSET_CONFIG[symbol].id;
+
+    const history = await request<CoinHistoryResponse>(
+      `/coins/${coinId}/market_chart?vs_currency=usd&days=${days}&interval=${days <= 30 ? 'hourly' : 'daily'}`
+    );
+
+    return history.prices.map(([timestamp, price]) => ({
+      timestamp: new Date(timestamp).toISOString(),
+      open: price,
+      high: price,
+      low: price,
+      close: price
+    }));
+  },
+
+  async getPrediction(symbol: AssetSymbol, timeframe: Timeframe) {
+    const history = await this.getHistoricalData(symbol, timeframe);
+    return buildPrediction(symbol, timeframe, history);
+  }
 };
