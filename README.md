@@ -10,16 +10,16 @@ The platform is currently configured for these assets:
 - **Ethereum (ETH)**
 - **XRP**
 
-The API and dashboard are aligned to this same asset list so we can extend cleanly to more coins in future iterations.
+The dashboard now runs as a static web app and fetches market data directly from the CoinGecko public API, which makes it deployable to GitHub Pages without running a backend server.
 
 ## Repository Structure
 
-- `apps/web` — React + TypeScript frontend (Vite).
-- `apps/api` — TypeScript backend for market snapshots, history, and prediction endpoints.
+- `apps/web` — React + TypeScript frontend (Vite), GitHub Pages ready.
+- `apps/api` — TypeScript backend (optional for future server-side features).
 - `packages/shared` — Shared TypeScript interfaces and DTOs.
 - `src` + `tests` — Baseline data pipeline utilities and tests.
 
-## Quick Start
+## Local Development
 
 ### 1) Install dependencies
 
@@ -27,16 +27,12 @@ The API and dashboard are aligned to this same asset list so we can extend clean
 npm install
 ```
 
-### 2) Run development servers
-
-Run each app in separate terminals:
+### 2) Run the web app
 
 ```bash
-npm run dev:api
 npm run dev:web
 ```
 
-- API default: `http://localhost:3000`
 - Web default: `http://localhost:5173`
 
 ### 3) Run checks
@@ -47,22 +43,23 @@ npm run typecheck
 npm test
 ```
 
-## API Endpoints Used by the Dashboard
+## GitHub Pages Deployment
 
-- `GET /api/markets?symbols=BTC,ETH,XRP`
-- `GET /api/history?symbol=BTC&timeframe=1M`
-- `GET /api/prediction?symbol=BTC&timeframe=1M`
-- `GET /health`
+A workflow is included at `.github/workflows/deploy-pages.yml`.
 
-## GitHub Domain / GitHub Pages
+### One-time GitHub setup
 
-You can deploy the web app to GitHub Pages as a temporary domain.
+1. Push this repository to GitHub.
+2. In your repository settings, go to **Pages**.
+3. Set **Source** to **GitHub Actions**.
+
+### Deploy
+
+- Push to `main` to auto-deploy, or manually run the **Deploy Web to GitHub Pages** workflow.
 
 Expected URL format:
 
 - `https://<your-github-username>.github.io/cryptocurrencyproject/`
-
-The Vite config already supports GitHub Pages by automatically setting `base` when `GITHUB_PAGES=true` in CI. You can also override with `VITE_BASE_PATH` if needed.
 
 ## Disclaimer
 
