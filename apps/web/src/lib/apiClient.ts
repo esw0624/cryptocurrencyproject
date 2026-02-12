@@ -1,7 +1,7 @@
 export type AssetSymbol = 'BTC' | 'ETH' | 'XRP';
 export type Timeframe = '1D' | '1W' | '1M' | '3M' | '1Y';
 
-type CoinGeckoId = 'bitcoin' | 'ethereum' | 'ripple';
+type BinanceSymbol = 'BTCUSDT' | 'ETHUSDT' | 'XRPUSDT';
 
 export interface MarketSnapshot {
   symbol: AssetSymbol;
@@ -29,63 +29,84 @@ export interface PredictionResponse {
   lastModelRun: string;
 }
 
-const ASSET_CONFIG: Record<AssetSymbol, { id: CoinGeckoId; name: string }> = {
-  BTC: { id: 'bitcoin', name: 'Bitcoin' },
-  ETH: { id: 'ethereum', name: 'Ethereum' },
-  XRP: { id: 'ripple', name: 'XRP' }
+const ASSET_CONFIG: Record<AssetSymbol, { ticker: BinanceSymbol; name: string }> = {
+  BTC: { ticker: 'BTCUSDT', name: 'Bitcoin' },
+  ETH: { ticker: 'ETHUSDT', name: 'Ethereum' },
+  XRP: { ticker: 'XRPUSDT', name: 'XRP' }
 };
 
-const COINGECKO_BASE_URL = 'https://api.coingecko.com/api/v3';
+const BINANCE_BASE_URL = 'https://api.binance.com/api/v3';
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, '') ?? 'http://localhost:3000/api';
 
-function timeframeToDays(timeframe: Timeframe): number {
-  switch (timeframe) {
-    case '1D':
-      return 1;
-    case '1W':
-      return 7;
-    case '1M':
-      return 30;
-    case '3M':
-      return 90;
-    case '1Y':
-      return 365;
-    default:
-      return 30;
+function requestError(response: Response, body: string) {
+  if (body) {
+    try {
+      const parsed = JSON.parse(body) as { msg?: string };
+      if (parsed.msg) return parsed.msg;
+    } catch {
+      // Ignore parse failures and fall back to raw text.
+    }
   }
+
+  return body || `Request failed with ${response.status}`;
 }
 
 async function request<T>(url: string): Promise<T> {
   const response = await fetch(url);
   if (!response.ok) {
     const message = await response.text();
-    throw new Error(message || `Request failed with ${response.status}`);
+    throw new Error(requestError(response, message));
   }
   return response.json() as Promise<T>;
 }
 
-interface CoinMarketItem {
-  id: CoinGeckoId;
-  symbol: string;
-  name: string;
-  current_price: number;
-  price_change_percentage_24h: number;
-  total_volume: number;
-  market_cap: number;
+interface BinanceTicker24h {
+  symbol: BinanceSymbol;
+  lastPrice: string;
+  priceChangePercent: string;
+  quoteVolume: string;
 }
 
-interface CoinHistoryResponse {
-  prices: [number, number][];
-}
+type BinanceKline = [
+  number,
+  string,
+  string,
+  string,
+  string,
+  string,
+  number,
+  string,
+  number,
+  string,
+  string,
+  string
+];
 
-function toSymbol(id: CoinGeckoId): AssetSymbol {
-  switch (id) {
-    case 'bitcoin':
+function toAssetSymbol(ticker: BinanceSymbol): AssetSymbol {
+  switch (ticker) {
+    case 'BTCUSDT':
       return 'BTC';
-    case 'ethereum':
+    case 'ETHUSDT':
       return 'ETH';
-    case 'ripple':
+    case 'XRPUSDT':
       return 'XRP';
+  }
+}
+
+function toBinanceTimeframe(timeframe: Timeframe): { interval: string; limit: number } {
+  switch (timeframe) {
+    case '1D':
+      return { interval: '5m', limit: 288 };
+    case '1W':
+      return { interval: '1h', limit: 168 };
+    case '1M':
+      return { interval: '4h', limit: 180 };
+    case '3M':
+      return { interval: '12h', limit: 180 };
+    case '1Y':
+      return { interval: '1d', limit: 365 };
+    default:
+      return { interval: '4h', limit: 180 };
   }
 }
 
@@ -128,19 +149,21 @@ export const apiClient = {
     try {
       return await getMarketSnapshotsFromApi(symbols);
     } catch {
-      const ids = symbols.map((symbol) => ASSET_CONFIG[symbol].id).join(',');
-      const marketData = await request<CoinMarketItem[]>(
-        `${COINGECKO_BASE_URL}/coins/markets?vs_currency=usd&ids=${ids}&order=market_cap_desc&sparkline=false&price_change_percentage=24h`
-      );
+      const tickers = symbols.map((symbol) => ASSET_CONFIG[symbol].ticker);
+      const query = encodeURIComponent(JSON.stringify(tickers));
+      const marketData = await request<BinanceTicker24h[]>(`${BINANCE_BASE_URL}/ticker/24hr?symbols=${query}`);
 
-      return marketData.map((item) => ({
-        symbol: toSymbol(item.id),
-        name: item.name,
-        priceUsd: item.current_price,
-        change24hPct: item.price_change_percentage_24h ?? 0,
-        volume24hUsd: item.total_volume,
-        marketCapUsd: item.market_cap
-      }));
+      return marketData.map((item) => {
+        const symbol = toAssetSymbol(item.symbol);
+        return {
+          symbol,
+          name: ASSET_CONFIG[symbol].name,
+          priceUsd: Number(item.lastPrice),
+          change24hPct: Number(item.priceChangePercent),
+          volume24hUsd: Number(item.quoteVolume),
+          marketCapUsd: 0
+        };
+      });
     }
   },
 
@@ -148,18 +171,18 @@ export const apiClient = {
     try {
       return await getHistoricalDataFromApi(symbol, timeframe);
     } catch {
-      const days = timeframeToDays(timeframe);
-      const coinId = ASSET_CONFIG[symbol].id;
-      const history = await request<CoinHistoryResponse>(
-        `${COINGECKO_BASE_URL}/coins/${coinId}/market_chart?vs_currency=usd&days=${days}&interval=${days <= 30 ? 'hourly' : 'daily'}`
+      const coinTicker = ASSET_CONFIG[symbol].ticker;
+      const { interval, limit } = toBinanceTimeframe(timeframe);
+      const history = await request<BinanceKline[]>(
+        `${BINANCE_BASE_URL}/klines?symbol=${coinTicker}&interval=${interval}&limit=${limit}`
       );
 
-      return history.prices.map(([timestamp, price]) => ({
-        timestamp: new Date(timestamp).toISOString(),
-        open: price,
-        high: price,
-        low: price,
-        close: price
+      return history.map((candle) => ({
+        timestamp: new Date(candle[0]).toISOString(),
+        open: Number(candle[1]),
+        high: Number(candle[2]),
+        low: Number(candle[3]),
+        close: Number(candle[4])
       }));
     }
   },

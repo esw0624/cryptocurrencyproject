@@ -1,4 +1,4 @@
-# Cryptocurrency Project Monorepo
+# Predictify Monorepo
 
 This repository is organized as an npm workspaces monorepo for a crypto market + prediction platform.
 
@@ -10,7 +10,7 @@ The platform is currently configured for these assets:
 - **Ethereum (ETH)**
 - **XRP**
 
-The dashboard now runs as a static web app and fetches market data directly from the CoinGecko public API, which makes it deployable to GitHub Pages without running a backend server.
+The dashboard now runs as a static web app and fetches market data directly from the Binance public market data API, which makes it deployable to GitHub Pages without running a backend server.
 
 ## Repository Structure
 
@@ -25,6 +25,18 @@ The dashboard now runs as a static web app and fetches market data directly from
 
 ```bash
 npm install
+```
+
+If install fails with `403 Forbidden`, try the smart installer script that checks multiple registries and falls back automatically:
+
+```bash
+npm run install:deps
+```
+
+If your company uses an internal npm proxy, set it explicitly:
+
+```bash
+NPM_REGISTRY_URL=https://<your-internal-registry> npm run install:deps
 ```
 
 ### 2) Run the web app
@@ -45,7 +57,7 @@ npm run dev:web:lite
 ```
 
 - Runs at `http://localhost:5173`
-- Uses CoinGecko public API directly
+- Uses Binance public market API directly
 - Intended as a fallback when workspace dependencies cannot be installed
 
 ### 3) Run checks
@@ -69,6 +81,13 @@ A workflow is included at `.github/workflows/deploy-pages.yml`.
 ### Deploy
 
 - Push to `main` to auto-deploy, or manually run the **Deploy Web to GitHub Pages** workflow.
+
+
+If your GitHub Pages URL still shows the repository README instead of the app:
+
+1. Open **Settings → Pages** for the repository.
+2. Confirm **Source** is set to **GitHub Actions** (not branch deployment).
+3. Re-run the **Deploy Web to GitHub Pages** workflow after the latest push.
 
 Expected URL format:
 
