@@ -47,6 +47,14 @@ npm run dev:web
 
 - Web default: `http://localhost:5173`
 
+If your environment can't install workspace dependencies, use an automatic fallback command:
+
+```bash
+npm run dev:web:auto
+```
+
+- Tries full React/Vite app first
+- Automatically falls back to lite dashboard if dependencies are unavailable
 
 ### Troubleshooting restricted environments
 
@@ -59,6 +67,14 @@ npm run dev:web:lite
 - Runs at `http://localhost:5173`
 - Uses Binance public market API directly
 - Intended as a fallback when workspace dependencies cannot be installed
+
+You can also build a GitHub Pages compatible lite artifact locally without workspace dependencies:
+
+```bash
+npm run build:web:lite
+```
+
+- Outputs static files to `apps/web-lite/dist`
 
 ### 3) Run checks
 
@@ -81,6 +97,7 @@ A workflow is included at `.github/workflows/deploy-pages.yml`.
 ### Deploy
 
 - Push to `main` to auto-deploy, or manually run the **Deploy Web to GitHub Pages** workflow.
+- The workflow now auto-falls back to deploying the lite dashboard if dependency install/build fails in CI.
 
 
 If your GitHub Pages URL still shows the repository README instead of the app:
@@ -88,7 +105,7 @@ If your GitHub Pages URL still shows the repository README instead of the app:
 1. Open **Settings → Pages** for the repository.
 2. Confirm **Source** is set to **GitHub Actions** (not branch deployment).
 3. In **Actions**, make sure the `Deploy Web to GitHub Pages` workflow is the one deploying.
-4. Keep the Jekyll workflow manual-only (or disabled), then re-run `Deploy Web to GitHub Pages` after your latest push.
+4. Keep the `Deploy static content to Pages` and Jekyll workflows manual-only (or disabled), then re-run `Deploy Web to GitHub Pages` after your latest push.
 
 Expected URL format:
 

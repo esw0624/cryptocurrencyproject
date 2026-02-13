@@ -29,20 +29,36 @@ jobs:
           cache: 'npm'
 
       - name: Install dependencies
+        id: deps
+        continue-on-error: true
         run: npm install
 
-      - name: Build web app for GitHub Pages
+      - name: Build full web app for GitHub Pages
+        id: build_full
+        if: steps.deps.outcome == 'success'
+        continue-on-error: true
         run: npm run build -w @crypto/web
         env:
           GITHUB_PAGES: 'true'
 
+      - name: Build lite web fallback for GitHub Pages
+        if: steps.deps.outcome != 'success' || steps.build_full.outcome != 'success'
+        run: npm run build:web:lite
+
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
-      - name: Upload artifact
+      - name: Upload full web artifact
+        if: steps.build_full.outcome == 'success'
         uses: actions/upload-pages-artifact@v3
         with:
           path: apps/web/dist
+
+      - name: Upload lite fallback artifact
+        if: steps.deps.outcome != 'success' || steps.build_full.outcome != 'success'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: apps/web-lite/dist
 
       - name: Deploy to GitHub Pages
         id: deployment
