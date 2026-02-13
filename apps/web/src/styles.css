@@ -207,6 +207,24 @@ body {
   margin-bottom: 0.5rem;
 }
 
+.chart-panel {
+  border: 1px solid rgba(245, 165, 36, 0.35);
+}
+
+.chart-panel__header {
+  gap: 0.8rem;
+}
+
+.timeline-pill {
+  border: 1px solid #485c8b;
+  color: #b8caeb;
+  border-radius: 999px;
+  padding: 0.25rem 0.65rem;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
 .chart-wrap {
   height: 380px;
 }

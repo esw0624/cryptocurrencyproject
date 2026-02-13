@@ -166,7 +166,7 @@ export function Dashboard() {
                   </button>
                 </div>
               </div>
-              <PriceChart data={history} mode={chartMode} />
+              <PriceChart data={history} mode={chartMode} timeframe={timeframe} />
             </div>
             {prediction && <PredictionPanel prediction={prediction} />}
           </section>
