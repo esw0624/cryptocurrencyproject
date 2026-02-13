@@ -96,7 +96,7 @@ A workflow is included at `.github/workflows/deploy-pages.yml`.
 
 ### Deploy
 
-- Push to `main` to auto-deploy, or manually run the **Deploy Web to GitHub Pages** workflow.
+- Push to `main` or `master` to auto-deploy, or manually run the **Deploy Web to GitHub Pages** workflow.
 - The workflow now auto-falls back to deploying the lite dashboard if dependency install/build fails in CI.
 
 
