@@ -111,6 +111,15 @@ Expected URL format:
 
 - `https://<your-github-username>.github.io/cryptocurrencyproject/`
 
+
+## Public Hosting + Custom Domain
+
+If you want a production URL for anyone to open (and a custom domain), follow `DEPLOYMENT_GUIDE.md`.
+
+- Fastest path: **Vercel**
+- Also supported: **Netlify**
+- Existing option: **GitHub Pages**
+
 ## Disclaimer
 
 This project and its model outputs are for educational and research purposes only and **do not constitute financial advice**.
