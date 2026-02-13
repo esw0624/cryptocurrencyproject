@@ -15,7 +15,9 @@
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "node --test --experimental-strip-types tests/**/*.test.ts",
     "dev:web:lite": "node scripts/run-lite-web.mjs",
-    "install:deps": "node scripts/install-deps.mjs"
+    "install:deps": "node scripts/install-deps.mjs",
+    "dev:web:auto": "node scripts/dev-web-auto.mjs",
+    "build:web:lite": "node scripts/build-lite-web.mjs"
   },
   "devDependencies": {
     "eslint": "^9.23.0",

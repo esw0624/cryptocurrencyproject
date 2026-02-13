@@ -40,7 +40,7 @@ const ASSET_CONFIG: Record<AssetSymbol, { ticker: BinanceSymbol; name: string }>
 const BINANCE_BASE_URL = 'https://api.binance.com/api/v3';
 const COINGECKO_BASE_URL = 'https://api.coingecko.com/api/v3';
 const COINCAP_BASE_URL = 'https://api.coincap.io/v2';
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, '') ?? 'http://localhost:3000/api';
+const API_BASE_URL = (import.meta as { env?: { VITE_API_BASE_URL?: string } }).env?.VITE_API_BASE_URL?.replace(/\/$/, '') ?? 'http://localhost:3000/api';
 const REQUEST_TIMEOUT_MS = 8_000;
 const MAX_RETRIES = 2;
 const RETRY_DELAY_MS = 500;
@@ -145,6 +145,21 @@ interface CoinCapHistoryPoint {
 
 interface CoinCapHistoryResponse {
   data: CoinCapHistoryPoint[];
+}
+
+function ensureAllRequestedSymbols<T extends { symbol: AssetSymbol }>(
+  providerName: string,
+  requestedSymbols: AssetSymbol[],
+  rows: T[]
+): T[] {
+  const bySymbol = new Map(rows.map((row) => [row.symbol, row]));
+  const missing = requestedSymbols.filter((symbol) => !bySymbol.has(symbol));
+
+  if (missing.length > 0) {
+    throw new Error(`${providerName} response is missing ${missing.join(', ')}`);
+  }
+
+  return requestedSymbols.map((symbol) => bySymbol.get(symbol) as T);
 }
 
 type BinanceKline = [
@@ -309,7 +324,7 @@ async function getMarketSnapshotsFromBinance(symbols: AssetSymbol[]): Promise<Ma
   const query = encodeURIComponent(JSON.stringify(tickers));
   const marketData = await request<BinanceTicker24h[]>(`${BINANCE_BASE_URL}/ticker/24hr?symbols=${query}`);
 
-  return marketData.map((item) => {
+  const mapped = marketData.map((item) => {
     const symbol = toAssetSymbol(item.symbol);
     return {
       symbol,
@@ -320,6 +335,8 @@ async function getMarketSnapshotsFromBinance(symbols: AssetSymbol[]): Promise<Ma
       marketCapUsd: 0
     };
   });
+
+  return ensureAllRequestedSymbols('Binance', symbols, mapped);
 }
 
 async function getMarketSnapshotsFromCoinGecko(symbols: AssetSymbol[]): Promise<MarketSnapshot[]> {
@@ -332,7 +349,7 @@ async function getMarketSnapshotsFromCoinGecko(symbols: AssetSymbol[]): Promise<
 
   const marketData = await request<CoinGeckoMarket[]>(`${COINGECKO_BASE_URL}/coins/markets?${params.toString()}`);
 
-  return marketData.map((item) => {
+  const mapped = marketData.map((item) => {
     const symbol = fromCoinGeckoAssetId(item.id);
     return {
       symbol,
@@ -343,13 +360,15 @@ async function getMarketSnapshotsFromCoinGecko(symbols: AssetSymbol[]): Promise<
       marketCapUsd: item.market_cap
     };
   });
+
+  return ensureAllRequestedSymbols('CoinGecko', symbols, mapped);
 }
 
 async function getMarketSnapshotsFromCoinCap(symbols: AssetSymbol[]): Promise<MarketSnapshot[]> {
   const ids = symbols.map(toCoinCapAssetId).join(',');
   const response = await request<CoinCapAssetsResponse>(`${COINCAP_BASE_URL}/assets?ids=${ids}`);
 
-  return response.data.map((item) => {
+  const mapped = response.data.map((item) => {
     const symbol = fromCoinCapAssetId(item.id);
     return {
       symbol,
@@ -360,6 +379,8 @@ async function getMarketSnapshotsFromCoinCap(symbols: AssetSymbol[]): Promise<Ma
       marketCapUsd: Number(item.marketCapUsd)
     };
   });
+
+  return ensureAllRequestedSymbols('CoinCap', symbols, mapped);
 }
 
 async function getHistoricalDataFromBinance(symbol: AssetSymbol, timeframe: Timeframe): Promise<HistoricalCandle[]> {
@@ -498,4 +519,9 @@ export const apiClient = {
       return buildPrediction(symbol, timeframe, sourceHistory);
     }
   }
+};
+
+
+export const __internalApiClientHelpers = {
+  ensureAllRequestedSymbols
 };
