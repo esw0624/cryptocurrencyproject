@@ -30,6 +30,11 @@ export function Dashboard() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    const remainingAssets = TRACKED_ASSETS.filter((asset) => asset !== selectedAsset);
+    void Promise.allSettled(remainingAssets.map((asset) => apiClient.getHistoricalData(asset, timeframe)));
+  }, [selectedAsset, timeframe]);
+
+  useEffect(() => {
     let isMounted = true;
 
     async function loadData(showLoadingState: boolean) {
@@ -97,8 +102,8 @@ export function Dashboard() {
           <p className="brand-subtitle">Live trade signals and market pulse.</p>
         </div>
         <div className="top-nav__controls">
+          <p className="top-nav__caption">Asset</p>
           <AssetSelector assets={TRACKED_ASSETS} selectedAsset={selectedAsset} onSelect={setSelectedAsset} />
-          <TimeframeControls timeframe={timeframe} onChange={setTimeframe} />
         </div>
       </nav>
 
@@ -157,13 +162,16 @@ export function Dashboard() {
             <div>
               <div className="panel__header panel__header--inline">
                 <h2>{selectedMarket?.name ?? selectedAsset} chartroom</h2>
-                <div className="mode-toggle">
-                  <button className={`chip chip--small ${chartMode === 'line' ? 'chip--active' : ''}`} onClick={() => setChartMode('line')}>
-                    Line
-                  </button>
-                  <button className={`chip chip--small ${chartMode === 'candlestick' ? 'chip--active' : ''}`} onClick={() => setChartMode('candlestick')}>
-                    Range
-                  </button>
+                <div className="chart-toolbar">
+                  <TimeframeControls timeframe={timeframe} onChange={setTimeframe} />
+                  <div className="mode-toggle">
+                    <button className={`chip chip--small ${chartMode === 'line' ? 'chip--active' : ''}`} onClick={() => setChartMode('line')}>
+                      Line
+                    </button>
+                    <button className={`chip chip--small ${chartMode === 'candlestick' ? 'chip--active' : ''}`} onClick={() => setChartMode('candlestick')}>
+                      Range
+                    </button>
+                  </div>
                 </div>
               </div>
               <PriceChart data={history} mode={chartMode} timeframe={timeframe} />
