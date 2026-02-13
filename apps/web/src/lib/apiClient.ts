@@ -3,6 +3,7 @@ export type Timeframe = '1D' | '1W' | '1M' | '3M' | '1Y';
 
 type BinanceSymbol = 'BTCUSDT' | 'ETHUSDT' | 'XRPUSDT';
 type CoinGeckoAssetId = 'bitcoin' | 'ethereum' | 'ripple';
+type CoinCapAssetId = 'bitcoin' | 'ethereum' | 'xrp';
 
 export interface MarketSnapshot {
   symbol: AssetSymbol;
@@ -38,6 +39,7 @@ const ASSET_CONFIG: Record<AssetSymbol, { ticker: BinanceSymbol; name: string }>
 
 const BINANCE_BASE_URL = 'https://api.binance.com/api/v3';
 const COINGECKO_BASE_URL = 'https://api.coingecko.com/api/v3';
+const COINCAP_BASE_URL = 'https://api.coincap.io/v2';
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, '') ?? 'http://localhost:3000/api';
 
 function requestError(response: Response, body: string) {
@@ -81,6 +83,27 @@ interface CoinGeckoMarketChart {
   prices: [number, number][];
 }
 
+interface CoinCapAsset {
+  id: CoinCapAssetId;
+  priceUsd: string;
+  changePercent24Hr: string;
+  volumeUsd24Hr: string;
+  marketCapUsd: string;
+}
+
+interface CoinCapAssetsResponse {
+  data: CoinCapAsset[];
+}
+
+interface CoinCapHistoryPoint {
+  priceUsd: string;
+  time: number;
+}
+
+interface CoinCapHistoryResponse {
+  data: CoinCapHistoryPoint[];
+}
+
 type BinanceKline = [
   number,
   string,
@@ -118,6 +141,28 @@ function toCoinGeckoAssetId(symbol: AssetSymbol): CoinGeckoAssetId {
   }
 }
 
+function toCoinCapAssetId(symbol: AssetSymbol): CoinCapAssetId {
+  switch (symbol) {
+    case 'BTC':
+      return 'bitcoin';
+    case 'ETH':
+      return 'ethereum';
+    case 'XRP':
+      return 'xrp';
+  }
+}
+
+function fromCoinCapAssetId(assetId: CoinCapAssetId): AssetSymbol {
+  switch (assetId) {
+    case 'bitcoin':
+      return 'BTC';
+    case 'ethereum':
+      return 'ETH';
+    case 'xrp':
+      return 'XRP';
+  }
+}
+
 function fromCoinGeckoAssetId(assetId: CoinGeckoAssetId): AssetSymbol {
   switch (assetId) {
     case 'bitcoin':
@@ -143,6 +188,25 @@ function toBinanceTimeframe(timeframe: Timeframe): { interval: string; limit: nu
       return { interval: '1d', limit: 365 };
     default:
       return { interval: '4h', limit: 180 };
+  }
+}
+
+function toCoinCapInterval(timeframe: Timeframe): { interval: 'm5' | 'h1' | 'h6' | 'd1'; lookbackMs: number } {
+  const dayMs = 24 * 60 * 60 * 1000;
+
+  switch (timeframe) {
+    case '1D':
+      return { interval: 'm5', lookbackMs: dayMs };
+    case '1W':
+      return { interval: 'h1', lookbackMs: dayMs * 7 };
+    case '1M':
+      return { interval: 'h6', lookbackMs: dayMs * 30 };
+    case '3M':
+      return { interval: 'h6', lookbackMs: dayMs * 90 };
+    case '1Y':
+      return { interval: 'd1', lookbackMs: dayMs * 365 };
+    default:
+      return { interval: 'h6', lookbackMs: dayMs * 30 };
   }
 }
 
@@ -238,6 +302,23 @@ async function getMarketSnapshotsFromCoinGecko(symbols: AssetSymbol[]): Promise<
   });
 }
 
+async function getMarketSnapshotsFromCoinCap(symbols: AssetSymbol[]): Promise<MarketSnapshot[]> {
+  const ids = symbols.map(toCoinCapAssetId).join(',');
+  const response = await request<CoinCapAssetsResponse>(`${COINCAP_BASE_URL}/assets?ids=${ids}`);
+
+  return response.data.map((item) => {
+    const symbol = fromCoinCapAssetId(item.id);
+    return {
+      symbol,
+      name: ASSET_CONFIG[symbol].name,
+      priceUsd: Number(item.priceUsd),
+      change24hPct: Number(item.changePercent24Hr),
+      volume24hUsd: Number(item.volumeUsd24Hr),
+      marketCapUsd: Number(item.marketCapUsd)
+    };
+  });
+}
+
 async function getHistoricalDataFromBinance(symbol: AssetSymbol, timeframe: Timeframe): Promise<HistoricalCandle[]> {
   const coinTicker = ASSET_CONFIG[symbol].ticker;
   const { interval, limit } = toBinanceTimeframe(timeframe);
@@ -274,6 +355,33 @@ async function getHistoricalDataFromCoinGecko(symbol: AssetSymbol, timeframe: Ti
   }));
 }
 
+async function getHistoricalDataFromCoinCap(symbol: AssetSymbol, timeframe: Timeframe): Promise<HistoricalCandle[]> {
+  const assetId = toCoinCapAssetId(symbol);
+  const { interval, lookbackMs } = toCoinCapInterval(timeframe);
+  const end = Date.now();
+  const start = end - lookbackMs;
+  const params = new URLSearchParams({
+    interval,
+    start: String(start),
+    end: String(end)
+  });
+
+  const response = await request<CoinCapHistoryResponse>(
+    `${COINCAP_BASE_URL}/assets/${assetId}/history?${params.toString()}`
+  );
+
+  return response.data.map((point) => {
+    const price = Number(point.priceUsd);
+    return {
+      timestamp: new Date(point.time).toISOString(),
+      open: price,
+      high: price,
+      low: price,
+      close: price
+    };
+  });
+}
+
 export const apiClient = {
   async getMarketSnapshots(symbols: AssetSymbol[]) {
     try {
@@ -282,7 +390,11 @@ export const apiClient = {
       try {
         return await getMarketSnapshotsFromBinance(symbols);
       } catch {
-        return getMarketSnapshotsFromCoinGecko(symbols);
+        try {
+          return await getMarketSnapshotsFromCoinCap(symbols);
+        } catch {
+          return getMarketSnapshotsFromCoinGecko(symbols);
+        }
       }
     }
   },
@@ -294,7 +406,11 @@ export const apiClient = {
       try {
         return await getHistoricalDataFromBinance(symbol, timeframe);
       } catch {
-        return getHistoricalDataFromCoinGecko(symbol, timeframe);
+        try {
+          return await getHistoricalDataFromCoinCap(symbol, timeframe);
+        } catch {
+          return getHistoricalDataFromCoinGecko(symbol, timeframe);
+        }
       }
     }
   },

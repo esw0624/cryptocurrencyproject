@@ -30,8 +30,12 @@ export function Dashboard() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    async function loadData() {
-      setLoading(true);
+    let isMounted = true;
+
+    async function loadData(showLoadingState: boolean) {
+      if (showLoadingState) {
+        setLoading(true);
+      }
       setError(null);
 
       try {
@@ -42,23 +46,34 @@ export function Dashboard() {
 
         const predictionData = await apiClient.getPrediction(selectedAsset, timeframe, historicalData);
 
+        if (!isMounted) {
+          return;
+        }
+
         setMarkets(marketData);
         setHistory(historicalData);
         setPrediction(predictionData);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load dashboard data.');
+        if (isMounted) {
+          setError(err instanceof Error ? err.message : 'Failed to load dashboard data.');
+        }
       } finally {
-        setLoading(false);
+        if (showLoadingState && isMounted) {
+          setLoading(false);
+        }
       }
     }
 
-    void loadData();
+    void loadData(true);
 
     const refreshTimer = window.setInterval(() => {
-      void loadData();
+      void loadData(false);
     }, 15_000);
 
-    return () => window.clearInterval(refreshTimer);
+    return () => {
+      isMounted = false;
+      window.clearInterval(refreshTimer);
+    };
   }, [selectedAsset, timeframe]);
 
   const selectedMarket = useMemo(() => markets.find((market) => market.symbol === selectedAsset), [markets, selectedAsset]);
@@ -79,7 +94,7 @@ export function Dashboard() {
       <nav className="top-nav">
         <div>
           <div className="brand">Predictify</div>
-          <p className="brand-subtitle">Live trade signals and market pulse with automatic 15s refresh.</p>
+          <p className="brand-subtitle">Live trade signals and market pulse.</p>
         </div>
         <div className="top-nav__controls">
           <AssetSelector assets={TRACKED_ASSETS} selectedAsset={selectedAsset} onSelect={setSelectedAsset} />
