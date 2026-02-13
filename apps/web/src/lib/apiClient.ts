@@ -41,6 +41,10 @@ const BINANCE_BASE_URL = 'https://api.binance.com/api/v3';
 const COINGECKO_BASE_URL = 'https://api.coingecko.com/api/v3';
 const COINCAP_BASE_URL = 'https://api.coincap.io/v2';
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, '') ?? 'http://localhost:3000/api';
+const REQUEST_TIMEOUT_MS = 8_000;
+const MAX_RETRIES = 2;
+const RETRY_DELAY_MS = 500;
+const CACHE_PREFIX = 'predictify-cache-v1';
 
 function requestError(response: Response, body: string) {
   if (body) {
@@ -55,13 +59,52 @@ function requestError(response: Response, body: string) {
   return body || `Request failed with ${response.status}`;
 }
 
-async function request<T>(url: string): Promise<T> {
-  const response = await fetch(url);
-  if (!response.ok) {
-    const message = await response.text();
-    throw new Error(requestError(response, message));
+function cacheKey(key: string) {
+  return `${CACHE_PREFIX}:${key}`;
+}
+
+function readCache<T>(key: string): T | null {
+  if (typeof window === 'undefined') return null;
+
+  try {
+    const raw = window.localStorage.getItem(cacheKey(key));
+    return raw ? (JSON.parse(raw) as T) : null;
+  } catch {
+    return null;
   }
-  return response.json() as Promise<T>;
+}
+
+function writeCache<T>(key: string, data: T) {
+  if (typeof window === 'undefined') return;
+
+  try {
+    window.localStorage.setItem(cacheKey(key), JSON.stringify(data));
+  } catch {
+    // Ignore quota and serialization errors.
+  }
+}
+
+async function request<T>(url: string, retry = MAX_RETRIES): Promise<T> {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(url, { signal: controller.signal });
+    if (!response.ok) {
+      const message = await response.text();
+      throw new Error(requestError(response, message));
+    }
+    return response.json() as Promise<T>;
+  } catch (error) {
+    if (retry > 0) {
+      await new Promise((resolve) => window.setTimeout(resolve, RETRY_DELAY_MS * (MAX_RETRIES - retry + 1)));
+      return request<T>(url, retry - 1);
+    }
+
+    throw error;
+  } finally {
+    window.clearTimeout(timeout);
+  }
 }
 
 interface BinanceTicker24h {
@@ -384,32 +427,64 @@ async function getHistoricalDataFromCoinCap(symbol: AssetSymbol, timeframe: Time
 
 export const apiClient = {
   async getMarketSnapshots(symbols: AssetSymbol[]) {
+    const cacheToken = `markets:${symbols.join(',')}`;
+
     try {
-      return await getMarketSnapshotsFromApi(symbols);
+      const data = await getMarketSnapshotsFromApi(symbols);
+      writeCache(cacheToken, data);
+      return data;
     } catch {
       try {
-        return await getMarketSnapshotsFromBinance(symbols);
+        const data = await getMarketSnapshotsFromBinance(symbols);
+        writeCache(cacheToken, data);
+        return data;
       } catch {
         try {
-          return await getMarketSnapshotsFromCoinCap(symbols);
+          const data = await getMarketSnapshotsFromCoinCap(symbols);
+          writeCache(cacheToken, data);
+          return data;
         } catch {
-          return getMarketSnapshotsFromCoinGecko(symbols);
+          try {
+            const data = await getMarketSnapshotsFromCoinGecko(symbols);
+            writeCache(cacheToken, data);
+            return data;
+          } catch {
+            const cached = readCache<MarketSnapshot[]>(cacheToken);
+            if (cached?.length) return cached;
+            throw new Error('Unable to load market snapshots from live providers.');
+          }
         }
       }
     }
   },
 
   async getHistoricalData(symbol: AssetSymbol, timeframe: Timeframe) {
+    const cacheToken = `history:${symbol}:${timeframe}`;
+
     try {
-      return await getHistoricalDataFromApi(symbol, timeframe);
+      const data = await getHistoricalDataFromApi(symbol, timeframe);
+      writeCache(cacheToken, data);
+      return data;
     } catch {
       try {
-        return await getHistoricalDataFromBinance(symbol, timeframe);
+        const data = await getHistoricalDataFromBinance(symbol, timeframe);
+        writeCache(cacheToken, data);
+        return data;
       } catch {
         try {
-          return await getHistoricalDataFromCoinCap(symbol, timeframe);
+          const data = await getHistoricalDataFromCoinCap(symbol, timeframe);
+          writeCache(cacheToken, data);
+          return data;
         } catch {
-          return getHistoricalDataFromCoinGecko(symbol, timeframe);
+          try {
+            const data = await getHistoricalDataFromCoinGecko(symbol, timeframe);
+            writeCache(cacheToken, data);
+            return data;
+          } catch {
+            const cached = readCache<HistoricalCandle[]>(cacheToken);
+            if (cached?.length) return cached;
+            throw new Error(`Unable to load historical data for ${symbol}.`);
+          }
         }
       }
     }

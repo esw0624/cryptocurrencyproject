@@ -87,7 +87,8 @@ If your GitHub Pages URL still shows the repository README instead of the app:
 
 1. Open **Settings → Pages** for the repository.
 2. Confirm **Source** is set to **GitHub Actions** (not branch deployment).
-3. Re-run the **Deploy Web to GitHub Pages** workflow after the latest push.
+3. In **Actions**, make sure the `Deploy Web to GitHub Pages` workflow is the one deploying.
+4. Keep the Jekyll workflow manual-only (or disabled), then re-run `Deploy Web to GitHub Pages` after your latest push.
 
 Expected URL format:
 
