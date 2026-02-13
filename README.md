@@ -96,7 +96,7 @@ A workflow is included at `.github/workflows/deploy-pages.yml`.
 
 ### Deploy
 
-- Push to `main` to auto-deploy, or manually run the **Deploy Web to GitHub Pages** workflow.
+- Push to `main` or `master` to auto-deploy, or manually run the **Deploy Web to GitHub Pages** workflow.
 - The workflow now auto-falls back to deploying the lite dashboard if dependency install/build fails in CI.
 
 
@@ -110,6 +110,15 @@ If your GitHub Pages URL still shows the repository README instead of the app:
 Expected URL format:
 
 - `https://<your-github-username>.github.io/cryptocurrencyproject/`
+
+
+## Public Hosting + Custom Domain
+
+If you want a production URL for anyone to open (and a custom domain), follow `DEPLOYMENT_GUIDE.md`.
+
+- Fastest path: **Vercel**
+- Also supported: **Netlify**
+- Existing option: **GitHub Pages**
 
 ## Disclaimer
 
