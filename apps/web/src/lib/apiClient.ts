@@ -45,6 +45,16 @@ const REQUEST_TIMEOUT_MS = 8_000;
 const MAX_RETRIES = 2;
 const RETRY_DELAY_MS = 500;
 const CACHE_PREFIX = 'predictify-cache-v1';
+const HISTORY_TTL_MS = 60_000;
+const MARKET_TTL_MS = 15_000;
+
+type TimedCacheEntry<T> = {
+  data: T;
+  cachedAt: number;
+};
+
+const memoryCache = new Map<string, TimedCacheEntry<unknown>>();
+const inflightRequests = new Map<string, Promise<unknown>>();
 
 function requestError(response: Response, body: string) {
   if (body) {
@@ -72,6 +82,33 @@ function readCache<T>(key: string): T | null {
   } catch {
     return null;
   }
+}
+
+function readMemoryCache<T>(key: string, ttlMs: number): T | null {
+  const cached = memoryCache.get(key);
+  if (!cached) return null;
+  if (Date.now() - cached.cachedAt > ttlMs) {
+    memoryCache.delete(key);
+    return null;
+  }
+
+  return cached.data as T;
+}
+
+function writeMemoryCache<T>(key: string, data: T) {
+  memoryCache.set(key, { data, cachedAt: Date.now() });
+}
+
+async function dedupeRequest<T>(key: string, execute: () => Promise<T>): Promise<T> {
+  const active = inflightRequests.get(key) as Promise<T> | undefined;
+  if (active) return active;
+
+  const requestPromise = execute().finally(() => {
+    inflightRequests.delete(key);
+  });
+
+  inflightRequests.set(key, requestPromise);
+  return requestPromise;
 }
 
 function writeCache<T>(key: string, data: T) {
@@ -449,66 +486,88 @@ async function getHistoricalDataFromCoinCap(symbol: AssetSymbol, timeframe: Time
 export const apiClient = {
   async getMarketSnapshots(symbols: AssetSymbol[]) {
     const cacheToken = `markets:${symbols.join(',')}`;
+    const memoryCached = readMemoryCache<MarketSnapshot[]>(cacheToken, MARKET_TTL_MS);
+    if (memoryCached?.length) return memoryCached;
 
-    try {
-      const data = await getMarketSnapshotsFromApi(symbols);
-      writeCache(cacheToken, data);
-      return data;
-    } catch {
+    return dedupeRequest(cacheToken, async () => {
       try {
-        const data = await getMarketSnapshotsFromBinance(symbols);
+        const data = await getMarketSnapshotsFromApi(symbols);
         writeCache(cacheToken, data);
+        writeMemoryCache(cacheToken, data);
         return data;
       } catch {
         try {
-          const data = await getMarketSnapshotsFromCoinCap(symbols);
+          const data = await getMarketSnapshotsFromBinance(symbols);
           writeCache(cacheToken, data);
+          writeMemoryCache(cacheToken, data);
           return data;
         } catch {
           try {
-            const data = await getMarketSnapshotsFromCoinGecko(symbols);
+            const data = await getMarketSnapshotsFromCoinCap(symbols);
             writeCache(cacheToken, data);
+            writeMemoryCache(cacheToken, data);
             return data;
           } catch {
-            const cached = readCache<MarketSnapshot[]>(cacheToken);
-            if (cached?.length) return cached;
-            throw new Error('Unable to load market snapshots from live providers.');
+            try {
+              const data = await getMarketSnapshotsFromCoinGecko(symbols);
+              writeCache(cacheToken, data);
+              writeMemoryCache(cacheToken, data);
+              return data;
+            } catch {
+              const cached = readCache<MarketSnapshot[]>(cacheToken);
+              if (cached?.length) {
+                writeMemoryCache(cacheToken, cached);
+                return cached;
+              }
+              throw new Error('Unable to load market snapshots from live providers.');
+            }
           }
         }
       }
-    }
+    });
   },
 
   async getHistoricalData(symbol: AssetSymbol, timeframe: Timeframe) {
     const cacheToken = `history:${symbol}:${timeframe}`;
+    const memoryCached = readMemoryCache<HistoricalCandle[]>(cacheToken, HISTORY_TTL_MS);
+    if (memoryCached?.length) return memoryCached;
 
-    try {
-      const data = await getHistoricalDataFromApi(symbol, timeframe);
-      writeCache(cacheToken, data);
-      return data;
-    } catch {
+    return dedupeRequest(cacheToken, async () => {
       try {
-        const data = await getHistoricalDataFromBinance(symbol, timeframe);
+        const data = await getHistoricalDataFromApi(symbol, timeframe);
         writeCache(cacheToken, data);
+        writeMemoryCache(cacheToken, data);
         return data;
       } catch {
         try {
-          const data = await getHistoricalDataFromCoinCap(symbol, timeframe);
+          const data = await getHistoricalDataFromBinance(symbol, timeframe);
           writeCache(cacheToken, data);
+          writeMemoryCache(cacheToken, data);
           return data;
         } catch {
           try {
-            const data = await getHistoricalDataFromCoinGecko(symbol, timeframe);
+            const data = await getHistoricalDataFromCoinCap(symbol, timeframe);
             writeCache(cacheToken, data);
+            writeMemoryCache(cacheToken, data);
             return data;
           } catch {
-            const cached = readCache<HistoricalCandle[]>(cacheToken);
-            if (cached?.length) return cached;
-            throw new Error(`Unable to load historical data for ${symbol}.`);
+            try {
+              const data = await getHistoricalDataFromCoinGecko(symbol, timeframe);
+              writeCache(cacheToken, data);
+              writeMemoryCache(cacheToken, data);
+              return data;
+            } catch {
+              const cached = readCache<HistoricalCandle[]>(cacheToken);
+              if (cached?.length) {
+                writeMemoryCache(cacheToken, cached);
+                return cached;
+              }
+              throw new Error(`Unable to load historical data for ${symbol}.`);
+            }
           }
         }
       }
-    }
+    });
   },
 
   async getPrediction(symbol: AssetSymbol, timeframe: Timeframe, history?: HistoricalCandle[]) {
